@@ -10,6 +10,7 @@ from django.db.models import F
 from account.models import User
 from conf.models import JudgeServer
 from contest.models import ContestRuleType, ACMContestRank, OIContestRank, ContestStatus
+from judge.languages import languages
 from options.options import SysOptions
 from problem.models import Problem, ProblemRuleType
 from problem.utils import parse_problem_template
@@ -122,6 +123,36 @@ class JudgeDispatcher(DispatcherBase):
                 return
             self.submission.statistic_info["score"] = score
 
+    def _apply_language_additional_time(self, language: str, time: int) -> int:
+        # time: ms
+        # OJ language 정보는 /judge/languages.py 에서 확인할 것.
+        # 추가 시간은 백준의 채점 방식을 기준으로 함.
+        # https://help.acmicpc.net/language/info
+        if language == "Java":
+            return time * 2 + 1*1000
+        if language == "Python3":
+            return time * 3 + 2*1000
+        if language == "JavaScript":
+            return time * 3 + 2*1000
+        if language == "Golang":
+            return time * 2
+        return time
+
+    def _apply_language_additional_memory(self, language: str, memory: int) -> int:
+        # memory: MB
+        # OJ language 정보는 /judge/languages.py 에서 확인할 것.
+        # 추가 메모리는 백준의 채점 방식을 기준으로 함.
+        # https://help.acmicpc.net/language/info
+        if language == "Java":
+            return memory * 2 + 16
+        if language == "Python3":
+            return memory * 2 + 32
+        if language == "JavaScript":
+            return memory * 2
+        if language == "Golang":
+            return memory + 512
+        return memory
+
     def judge(self):
         language = self.submission.language
         sub_config = list(filter(lambda item: language == item["name"], SysOptions.languages))[0]
@@ -141,8 +172,8 @@ class JudgeDispatcher(DispatcherBase):
         data = {
             "language_config": sub_config["config"],
             "src": code,
-            "max_cpu_time": self.problem.time_limit,
-            "max_memory": 1024 * 1024 * self.problem.memory_limit,
+            "max_cpu_time": self._apply_language_additional_time(language, self.problem.time_limit),
+            "max_memory": self._apply_language_additional_memory(language, 1024 * 1024 * self.problem.memory_limit),
             "test_case_id": self.problem.test_case_id,
             "output": False,
             "spj_version": self.problem.spj_version,
